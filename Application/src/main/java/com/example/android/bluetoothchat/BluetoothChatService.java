@@ -84,12 +84,15 @@ public class BluetoothChatService {
     /**
      * Update UI title according to the current state of the chat connection
      */
+    //在BluetoothChatFragment中的handleMessage方法中会调用setStatus()方法去设置subTitle，actionBar.setSubtitle(subTitle);
     private synchronized void updateUserInterfaceTitle() {
         mState = getState();
         Log.d(TAG, "updateUserInterfaceTitle() " + mNewState + " -> " + mState);
         mNewState = mState;
 
         // Give the new state to the Handler so the UI Activity can update
+        //从全局消息池返回一个新的Message对象Returns a new {@link android.os.Message Message} from the global message pool,
+        // 然后Sends this Message to the Handler specified by {@link #getTarget}.
         mHandler.obtainMessage(Constants.MESSAGE_STATE_CHANGE, mNewState, -1).sendToTarget();
     }
 
@@ -104,26 +107,34 @@ public class BluetoothChatService {
      * Start the chat service. Specifically start AcceptThread to begin a
      * session in listening (server) mode. Called by the Activity onResume()
      */
+    // TODO: 2019/1/25 为什么是以此种方式来开启一个session作为servermode，不太懂
+    //开始chat service 服务，启动一个AcceptThread为了以监听（服务器）模式开始一个session，
+    //被Activity（BluetoothChatFragment）的onResume()调用
+    // mChatService.start();
     public synchronized void start() {
         Log.d(TAG, "start");
 
         // Cancel any thread attempting to make a connection
+        //取消所有尝试连接的线程
         if (mConnectThread != null) {
             mConnectThread.cancel();
             mConnectThread = null;
         }
 
         // Cancel any thread currently running a connection
+        //取消所有已连接的线程
         if (mConnectedThread != null) {
             mConnectedThread.cancel();
             mConnectedThread = null;
         }
 
         // Start the thread to listen on a BluetoothServerSocket
+        //开始一个SecureAcceptThread线程，去监听BluetoothServerSocket
         if (mSecureAcceptThread == null) {
             mSecureAcceptThread = new AcceptThread(true);
             mSecureAcceptThread.start();
         }
+        //开始一个InSecureAcceptThread线程，去监听BluetoothServerSocket
         if (mInsecureAcceptThread == null) {
             mInsecureAcceptThread = new AcceptThread(false);
             mInsecureAcceptThread.start();
@@ -138,10 +149,12 @@ public class BluetoothChatService {
      * @param device The BluetoothDevice to connect
      * @param secure Socket Security type - Secure (true) , Insecure (false)
      */
+    //开始一个连接线程ConnectThread，去初始化initiate一个远程设备的连接a connection to a remote device.
     public synchronized void connect(BluetoothDevice device, boolean secure) {
         Log.d(TAG, "connect to: " + device);
 
         // Cancel any thread attempting to make a connection
+        //当前状态mState是正在连接STATE_CONNECTING的，存在一个正在尝试连接的线程mConnectThread，则取消cancel该线程
         if (mState == STATE_CONNECTING) {
             if (mConnectThread != null) {
                 mConnectThread.cancel();
@@ -150,15 +163,17 @@ public class BluetoothChatService {
         }
 
         // Cancel any thread currently running a connection
+        //如存在已经连接的线程mConnectedThread，取消该线程
         if (mConnectedThread != null) {
             mConnectedThread.cancel();
             mConnectedThread = null;
         }
 
         // Start the thread to connect with the given device
+        //开始一个新的尝试连接的线程mConnectThread
         mConnectThread = new ConnectThread(device, secure);
-        mConnectThread.start();
-        // Update UI title
+        mConnectThread.start();//开始该线程
+        // Update UI title，更新subTitle副标题（no connected、connecting、connected）
         updateUserInterfaceTitle();
     }
 
@@ -168,6 +183,7 @@ public class BluetoothChatService {
      * @param socket The BluetoothSocket on which the connection was made
      * @param device The BluetoothDevice that has been connected
      */
+    //被AcceptThread的run()调用，被AcceptThread的run又是在BluetoothChatService的start()方法被调用的
     public synchronized void connected(BluetoothSocket socket, BluetoothDevice
             device, final String socketType) {
         Log.d(TAG, "connected, Socket Type:" + socketType);
@@ -195,6 +211,7 @@ public class BluetoothChatService {
         }
 
         // Start the thread to manage the connection and perform transmissions
+        // TODO: 2019/1/25 开始一个 ConnectedThread 管理connection和执行transmissions
         mConnectedThread = new ConnectedThread(socket, socketType);
         mConnectedThread.start();
 
@@ -299,11 +316,14 @@ public class BluetoothChatService {
      * like a server-side client. It runs until a connection is accepted
      * (or until cancelled).
      */
+    //AcceptThread开放一个BluetoothServerSocket，用于监听连接请求
     private class AcceptThread extends Thread {
         // The local server socket
         private final BluetoothServerSocket mmServerSocket;
         private String mSocketType;
 
+        //构造方法通过SDP的service name和uuid，初始化一个BluetoothServerSocket对象mmServerSocket
+        //并把当前状态设置为STATE_LISTEN
         public AcceptThread(boolean secure) {
             BluetoothServerSocket tmp = null;
             mSocketType = secure ? "Secure" : "Insecure";
@@ -312,7 +332,7 @@ public class BluetoothChatService {
             try {
                 if (secure) {
                     tmp = mAdapter.listenUsingRfcommWithServiceRecord(NAME_SECURE,
-                            MY_UUID_SECURE);
+                            MY_UUID_SECURE);//返回一个BluetoothServerSocket
                 } else {
                     tmp = mAdapter.listenUsingInsecureRfcommWithServiceRecord(
                             NAME_INSECURE, MY_UUID_INSECURE);
@@ -332,10 +352,14 @@ public class BluetoothChatService {
             BluetoothSocket socket = null;
 
             // Listen to the server socket if we're not connected
+            //在开放BluetoothServerSocket的监听进程AcceptThread运行时，需要先判断当前是否处于已连接状态
+            //因为作为服务器，最开始是监听状态
+            //未连接上会一直在循环中，通过mmServerSocket.accept()来获取一个BluetoothSocket对象socket
             while (mState != STATE_CONNECTED) {
                 try {
                     // This is a blocking call and will only return on a
                     // successful connection or an exception
+                    //成功连接返回一个BluetoothSocket对象
                     socket = mmServerSocket.accept();
                 } catch (IOException e) {
                     Log.e(TAG, "Socket Type: " + mSocketType + "accept() failed", e);
@@ -343,12 +367,16 @@ public class BluetoothChatService {
                 }
 
                 // If a connection was accepted
+                //如果得到了一个不为空的BluetoothSocket对象socket
                 if (socket != null) {
                     synchronized (BluetoothChatService.this) {
                         switch (mState) {
+                            //第一次进入是STATE_LISTEN状态，是AcceptThread线程构造方法设置的；
                             case STATE_LISTEN:
                             case STATE_CONNECTING:
                                 // Situation normal. Start the connected thread.
+
+                                // 调用connected(),建立了ConnectedThread对象
                                 connected(socket, socket.getRemoteDevice(),
                                         mSocketType);
                                 break;
@@ -356,6 +384,7 @@ public class BluetoothChatService {
                             case STATE_CONNECTED:
                                 // Either not ready or already connected. Terminate new socket.
                                 try {
+                                    //关闭BluetoothSocket
                                     socket.close();
                                 } catch (IOException e) {
                                     Log.e(TAG, "Could not close unwanted socket", e);
@@ -369,9 +398,11 @@ public class BluetoothChatService {
 
         }
 
+
         public void cancel() {
             Log.d(TAG, "Socket Type" + mSocketType + "cancel " + this);
             try {
+                //关闭BluetoothServerSocket
                 mmServerSocket.close();
             } catch (IOException e) {
                 Log.e(TAG, "Socket Type" + mSocketType + "close() of server failed", e);
@@ -385,6 +416,8 @@ public class BluetoothChatService {
      * with a device. It runs straight through; the connection either
      * succeeds or fails.
      */
+    //尝试与设备Device建立一个outgoing connection
+        //并把当前状态设置为STATE_CONNECTING
     private class ConnectThread extends Thread {
         private final BluetoothSocket mmSocket;
         private final BluetoothDevice mmDevice;
@@ -423,6 +456,7 @@ public class BluetoothChatService {
             try {
                 // This is a blocking call and will only return on a
                 // successful connection or an exception
+                //
                 mmSocket.connect();
             } catch (IOException e) {
                 // Close the socket
