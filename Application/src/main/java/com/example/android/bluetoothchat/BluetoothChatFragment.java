@@ -109,7 +109,9 @@ public class BluetoothChatFragment extends Fragment {
         // setupChat() will then be called during onActivityResult
         if (!mBluetoothAdapter.isEnabled()) {
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+
             startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
+
             // Otherwise, setup the chat session
         } else if (mChatService == null) {
             setupChat();//其中mChatService = new BluetoothChatService(getActivity(), mHandler);
@@ -360,6 +362,7 @@ public class BluetoothChatFragment extends Fragment {
      * @param data   An {@link Intent} with {@link DeviceListActivity#EXTRA_DEVICE_ADDRESS} extra.
      * @param secure Socket Security type - Secure (true) , Insecure (false)
      */
+    //EXTRA_DEVICE_ADDRESS是从DeviceListActivity扫描蓝牙，返回其中获取到的mac地址，
     private void connectDevice(Intent data, boolean secure) {
         // Get the device MAC address
         String address = data.getExtras()

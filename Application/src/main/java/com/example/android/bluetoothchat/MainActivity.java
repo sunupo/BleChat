@@ -64,7 +64,7 @@ public class MainActivity extends SampleActivityBase {
 
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
-        MenuItem logToggle = menu.findItem(R.id.menu_toggle_log);
+        MenuItem logToggle = menu.findItem(R.id.menu_toggle_log);//showdiag
         logToggle.setVisible(findViewById(R.id.sample_output) instanceof ViewAnimator);
         logToggle.setTitle(mLogShown ? R.string.sample_hide_log : R.string.sample_show_log);
 
@@ -78,9 +78,9 @@ public class MainActivity extends SampleActivityBase {
                 mLogShown = !mLogShown;
                 ViewAnimator output = (ViewAnimator) findViewById(R.id.sample_output);
                 if (mLogShown) {
-                    output.setDisplayedChild(1);
+                    output.setDisplayedChild(1);//显示log_fragment
                 } else {
-                    output.setDisplayedChild(0);
+                    output.setDisplayedChild(0);//显示ScrollView
                 }
                 supportInvalidateOptionsMenu();
                 return true;

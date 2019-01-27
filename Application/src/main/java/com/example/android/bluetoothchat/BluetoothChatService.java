@@ -107,10 +107,11 @@ public class BluetoothChatService {
      * Start the chat service. Specifically start AcceptThread to begin a
      * session in listening (server) mode. Called by the Activity onResume()
      */
-    // TODO: 2019/1/25 为什么是以此种方式来开启一个session作为servermode，不太懂
     //开始chat service 服务，启动一个AcceptThread为了以监听（服务器）模式开始一个session，
     //被Activity（BluetoothChatFragment）的onResume()调用
     // mChatService.start();
+    //1.双向通信，两端都需要开启AcceptThread线程
+    //2.单向通信，下位机远程device作为server端，监听App端的连接请求
     public synchronized void start() {
         Log.d(TAG, "start");
 
@@ -150,6 +151,9 @@ public class BluetoothChatService {
      * @param secure Socket Security type - Secure (true) , Insecure (false)
      */
     //开始一个连接线程ConnectThread，去初始化initiate一个远程设备的连接a connection to a remote device.
+    //---------------------这儿没有关闭AcceptThread线程，我的理解是:-----------------------
+    //1.双向通信，还需要保留监听服务
+    //2.单向通信（app客户端发起connect连接，app没有监听服务；服务端应该不会发起connect请求）
     public synchronized void connect(BluetoothDevice device, boolean secure) {
         Log.d(TAG, "connect to: " + device);
 
@@ -184,6 +188,8 @@ public class BluetoothChatService {
      * @param device The BluetoothDevice that has been connected
      */
     //被AcceptThread的run()调用，被AcceptThread的run又是在BluetoothChatService的start()方法被调用的
+    //server和client都需要这个线程，在AcceptThread线程和ConnectedThread线程在满足一定条件时都会调用connected()创建一个ConnectedThread线程
+    // TODO: 2019/1/26 因该是每点击一次消息发送按钮， server和client都会创建一个这个线程
     public synchronized void connected(BluetoothSocket socket, BluetoothDevice
             device, final String socketType) {
         Log.d(TAG, "connected, Socket Type:" + socketType);
@@ -216,6 +222,7 @@ public class BluetoothChatService {
         mConnectedThread.start();
 
         // Send the name of the connected device back to the UI Activity
+        //传出一个消息到BlueToothChatFragment，Toast显示“已连接到设备的名字”
         Message msg = mHandler.obtainMessage(Constants.MESSAGE_DEVICE_NAME);
         Bundle bundle = new Bundle();
         bundle.putString(Constants.DEVICE_NAME, device.getName());
@@ -270,12 +277,25 @@ public class BluetoothChatService {
             r = mConnectedThread;
         }
         // Perform the write unsynchronized
+       /*
+       * mmOutStream= socket.getOutputStream();//ConnectedThread的write方法，通过socket获得一个输出流
+       *mmOutStream.write(buffer);//输出流把数据写入到buffer
+       * mHandler.obtainMessage(Constants.MESSAGE_WRITE, -1, -1, buffer).sendToTarget();//通过handler得到一个message，message把buffer的值发送到BluetoothChatFragment
+       *BluetoothChatFragment得到buffer数据的值过后，把他添加到mConversationArrayAdapter.add("Me:  " + writeMessage);这就是显示到聊天记录框的内容
+       * */
+
         r.write(out);
     }
 
     /**
      * Indicate that the connection attempt failed and notify the UI Activity.
      */
+    //连接失败，最后会重新开启一个AcceptThread监听线程(因为本demo是蓝牙双向通信。我要做的是远程 device作为下位机开启serverSocket单向通信)
+    // TODO: 2019/1/26 什么时候调用？
+    //在connectThread线程使用try：mmSocket.connect()方法连接失败时，catch：会调用connectionFailed()，失败会直接return；
+    //连接成功，
+    // 1.服务端AcceptThread线程的socket = mmServerSocket.accept();也成功,BluetoothSocket socket不为空，进入if，进入case与语句，开启一个ConnectedThread线程
+    // 2.App客户端则会执行清空连接ConnectThread进程，开启已连接ConnectedThread进程，connectThread=null;connected(mmSocket, mmDevice, mSocketType);开启一个ConnectedThread
     private void connectionFailed() {
         // Send a failure message back to the Activity
         Message msg = mHandler.obtainMessage(Constants.MESSAGE_TOAST);
@@ -295,6 +315,9 @@ public class BluetoothChatService {
     /**
      * Indicate that the connection was lost and notify the UI Activity.
      */
+    //在ConnectedThread线程，发现链接失败是会调用connectionLost()
+    //connectionFailed()是在connectThread线程创建连接失败调用
+    //connectionLost()是在ConnectedThread线程发现已经建立的连接断开时调用
     private void connectionLost() {
         // Send a failure message back to the Activity
         Message msg = mHandler.obtainMessage(Constants.MESSAGE_TOAST);
@@ -355,11 +378,17 @@ public class BluetoothChatService {
             //在开放BluetoothServerSocket的监听进程AcceptThread运行时，需要先判断当前是否处于已连接状态
             //因为作为服务器，最开始是监听状态
             //未连接上会一直在循环中，通过mmServerSocket.accept()来获取一个BluetoothSocket对象socket
+            //app客户端发出连接请求到开启了AcceptThread线程的服务短板，连接成功过后socket！=null，进入if语句
+            //因为case STATE_LISTEN：没有加break，所以会执行到case STATE_CONNECTING:中的语句，此处有break，才会跳出switch语句
+            //对switch case不加break的说明：当第二个case与switch条件相同时 执行完第二个case 然后会顺序把下面的所有case语句执行完，如果你想让程序只执行相应的case就在后面加上break，这样就只执行这一个然后跳出
             while (mState != STATE_CONNECTED) {
                 try {
                     // This is a blocking call and will only return on a
                     // successful connection or an exception
-                    //成功连接返回一个BluetoothSocket对象
+                    //app客户端发起连接请求（一个ConnectedThread线程），服务端成功连接返回一个BluetoothSocket对象，客户端连接成功一会得到一个BluetoothSocket对象
+                    //连接成功，
+                    // 1.服务端AcceptThread线程的socket = mmServerSocket.accept();也成功,BluetoothSocket socket不为空，进入if，进入case与语句，开启一个ConnectedThread线程
+                    // 2.App客户端则会执行清空连接ConnectThread进程，开启已连接ConnectedThread进程，connectThread=null;connected(mmSocket, mmDevice, mSocketType);开启一个ConnectedThread
                     socket = mmServerSocket.accept();
                 } catch (IOException e) {
                     Log.e(TAG, "Socket Type: " + mSocketType + "accept() failed", e);
@@ -383,8 +412,10 @@ public class BluetoothChatService {
                             case STATE_NONE:
                             case STATE_CONNECTED:
                                 // Either not ready or already connected. Terminate new socket.
+                                //如果已连接，退出循环，不再在上面的try语句中创建新的 socket = mmServerSocket.accept();
                                 try {
                                     //关闭BluetoothSocket
+                                    // TODO: 2019/1/25 有点不明白，直接退出循环就好了，为什么要socket.close()
                                     socket.close();
                                 } catch (IOException e) {
                                     Log.e(TAG, "Could not close unwanted socket", e);
@@ -442,6 +473,12 @@ public class BluetoothChatService {
                 Log.e(TAG, "Socket Type: " + mSocketType + "create() failed", e);
             }
             mmSocket = tmp;
+            //如果这是服务端程序，肯定开启了AcceptThread线程
+            //AcceptThread线程中的run方法有一个循环，当设置为STATE_CONNECTING，循环里面对应的case语句字语句会被执行
+            //connected(socket, socket.getRemoteDevice(),mSocketType);
+            //注意ConnectThread线程中的run()方法中有一个connect()操作，会阻塞直到连接建立成功或者失败，成功则会发起connected(mmSocket, mmDevice, mSocketType);
+            //在connected(mmSocket, mmDevice, mSocketType)中，会关闭其它进程，
+            // TODO: 2019/1/25   若果是app客户端程序，代码没看完，后面再分析
             mState = STATE_CONNECTING;
         }
 
@@ -454,9 +491,10 @@ public class BluetoothChatService {
 
             // Make a connection to the BluetoothSocket
             try {
-                // This is a blocking call and will only return on a
-                // successful connection or an exception
-                //
+                //This method will block until a connection is made or the connection fails.
+                // If this method returns without an exception then this socket is now connected.
+                //BluetoothSocket的connect()方法会阻塞block，直到连接成功或者连接失败
+                //如果这个方法没有返回异常，说明mmSocket连接成功
                 mmSocket.connect();
             } catch (IOException e) {
                 // Close the socket
@@ -471,11 +509,14 @@ public class BluetoothChatService {
             }
 
             // Reset the ConnectThread because we're done
+            //对括号内的对象加锁，只有拿到对象的锁标记，才能进入代码块。
             synchronized (BluetoothChatService.this) {
                 mConnectThread = null;
             }
 
             // Start the connected thread
+            //启动一个ConnectedThread线程，在该线程中，mState会被设置为mState = STATE_CONNECTED;
+            //因为这是发起连接的线程，对应APP客户端，如果不需要双向通信，app端没有开启AcceptThread线程
             connected(mmSocket, mmDevice, mSocketType);
         }
 

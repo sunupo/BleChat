@@ -80,7 +80,7 @@ public class DeviceListActivity extends Activity {
         scanButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 doDiscovery();
-                v.setVisibility(View.GONE);
+                v.setVisibility(View.VISIBLE);
             }
         });
 
@@ -171,6 +171,8 @@ public class DeviceListActivity extends Activity {
             mBtAdapter.cancelDiscovery();
 
             // Get the device MAC address, which is the last 17 chars in the View
+            //在BroadcastReceiver mReceiver中，
+            //mNewDevicesArrayAdapter.add(device.getName() + "\n" + device.getAddress());
             String info = ((TextView) v).getText().toString();
             String address = info.substring(info.length() - 17);
 
@@ -188,6 +190,7 @@ public class DeviceListActivity extends Activity {
      * The BroadcastReceiver that listens for discovered devices and changes the title when
      * discovery is finished
      */
+    //接收的系统广播
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
